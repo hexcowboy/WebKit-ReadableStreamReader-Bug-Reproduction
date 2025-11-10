@@ -52,3 +52,7 @@ npm run dev
 
 - [Mediabunny Issue #184](https://github.com/Vanilagy/mediabunny/issues/184)
 - Source: [BlobSource implementation](https://github.com/Vanilagy/mediabunny/blob/main/src/source.ts#L222)
+
+## Screenshot
+
+![Console page crash screenshot](public/screenshot.png)

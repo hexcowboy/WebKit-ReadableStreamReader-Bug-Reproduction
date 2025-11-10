@@ -34,7 +34,7 @@
 
     <div class="info">
         <p><strong>Bug:</strong> iOS WebKit crashes when reading large Blobs using parallel ReadableStream readers with slices to file end.</p>
-        <p><strong>Test:</strong> Upload a large video file (100MB+) and select a mode below.</p>
+        <p><strong>Test:</strong> Upload a large video file (200MB+) and select a mode below.</p>
     </div>
 
     <div class="controls">
@@ -51,6 +51,11 @@
 
     <input type="file" id="fileInput" accept="video/*">
     <div id="status">Select a file to begin</div>
+
+		<p>Screenshot of crash:</p>
+    <div style="margin-top: 40px; text-align: center;">
+        <img src="public/screenshot.png" alt="Test page screenshot" style="max-width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+    </div>
 
     <script>
         // Stream API: Creates large slices to file end and reads in parallel (CRASHES)
