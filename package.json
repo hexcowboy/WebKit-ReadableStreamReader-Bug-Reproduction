@@ -1,0 +1,15 @@
+{
+  "name": "repro",
+  "version": "1.0.0",
+  "description": "WebKit ReadableStreamReader bug reproduction",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "vite": "^5.0.0"
+  }
+}

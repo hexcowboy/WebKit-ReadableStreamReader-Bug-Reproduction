@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebKit Blob Stream Bug</title>
+    <style>
+        body {
+            font-family: system-ui, sans-serif;
+            max-width: 700px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+        .info {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 20px 0;
+            border-radius: 4px;
+        }
+        .controls { margin: 20px 0; }
+        input[type="file"] { margin: 15px 0; }
+        #status {
+            padding: 12px;
+            margin: 15px 0;
+            border-radius: 4px;
+            background: #e3f2fd;
+        }
+        #status.error { background: #ffebee; color: #c62828; }
+        #status.success { background: #e8f5e9; color: #2e7d32; }
+    </style>
+</head>
+<body>
+    <h1>WebKit Blob Stream Bug Reproduction</h1>
+
+    <div class="info">
+        <p><strong>Bug:</strong> iOS WebKit crashes when reading large Blobs using parallel ReadableStream readers with slices to file end.</p>
+        <p><strong>Test:</strong> Upload a large video file (100MB+) and select a mode below.</p>
+    </div>
+
+    <div class="controls">
+        <label>
+            <input type="radio" name="mode" value="stream" checked>
+            Stream API (crashes on iOS) - <code>blob.slice(offset).stream().getReader()</code>
+        </label>
+        <br>
+        <label>
+            <input type="radio" name="mode" value="arraybuffer">
+            ArrayBuffer API (workaround) - <code>blob.slice(start, end).arrayBuffer()</code>
+        </label>
+    </div>
+
+    <input type="file" id="fileInput" accept="video/*">
+    <div id="status">Select a file to begin</div>
+
+    <script>
+        // Stream API: Creates large slices to file end and reads in parallel (CRASHES)
+        async function testStreamAPI(file) {
+            const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB
+            const MAX_PARALLEL = 4;
+            const readerCache = {};
+
+            async function readChunk(startPos, endPos, workerId) {
+                let reader = readerCache[workerId];
+
+                if (!reader) {
+                    // Creates slice from startPos to END of file
+                    const slice = file.slice(startPos);
+                    reader = slice.stream().getReader();
+                    readerCache[workerId] = reader;
+                }
+
+                let currentPos = startPos;
+                while (currentPos < endPos) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    currentPos += value.length;
+                }
+
+                return currentPos - startPos;
+            }
+
+            const tasks = [];
+            for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
+                tasks.push({
+                    start: offset,
+                    end: Math.min(offset + CHUNK_SIZE, file.size),
+                    id: tasks.length
+                });
+            }
+
+            let totalRead = 0;
+            for (let i = 0; i < tasks.length; i += MAX_PARALLEL) {
+                const batch = tasks.slice(i, i + MAX_PARALLEL);
+                const results = await Promise.all(
+                    batch.map(t => readChunk(t.start, t.end, t.id))
+                );
+                totalRead += results.reduce((sum, n) => sum + n, 0);
+
+                document.getElementById('status').textContent =
+                    `Stream: ${(totalRead / 1024 / 1024).toFixed(1)}MB / ${(file.size / 1024 / 1024).toFixed(1)}MB`;
+            }
+
+            return totalRead;
+        }
+
+        // ArrayBuffer API: Reads exact ranges (WORKS)
+        async function testArrayBufferAPI(file) {
+            const CHUNK_SIZE = 8 * 1024 * 1024;
+            const MAX_PARALLEL = 4;
+
+            async function readChunk(startPos, endPos) {
+                const buffer = await file.slice(startPos, endPos).arrayBuffer();
+                return buffer.byteLength;
+            }
+
+            const tasks = [];
+            for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
+                tasks.push({
+                    start: offset,
+                    end: Math.min(offset + CHUNK_SIZE, file.size)
+                });
+            }
+
+            let totalRead = 0;
+            for (let i = 0; i < tasks.length; i += MAX_PARALLEL) {
+                const batch = tasks.slice(i, i + MAX_PARALLEL);
+                const results = await Promise.all(
+                    batch.map(t => readChunk(t.start, t.end))
+                );
+                totalRead += results.reduce((sum, n) => sum + n, 0);
+
+                document.getElementById('status').textContent =
+                    `ArrayBuffer: ${(totalRead / 1024 / 1024).toFixed(1)}MB / ${(file.size / 1024 / 1024).toFixed(1)}MB`;
+            }
+
+            return totalRead;
+        }
+
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const status = document.getElementById('status');
+            status.className = '';
+            status.textContent = `Processing ${file.name} (${(file.size / 1024 / 1024).toFixed(0)}MB)...`;
+
+            const start = Date.now();
+            try {
+                const bytesRead = mode === 'stream'
+                    ? await testStreamAPI(file)
+                    : await testArrayBufferAPI(file);
+
+                const elapsed = ((Date.now() - start) / 1000).toFixed(1);
+                status.className = 'success';
+                status.textContent = `✓ Success: Read ${(bytesRead / 1024 / 1024).toFixed(0)}MB in ${elapsed}s using ${mode}`;
+            } catch (error) {
+                status.className = 'error';
+                status.textContent = `✗ Error: ${error.message}`;
+                console.error(error);
+            }
+        });
+    </script>
+</body>
+</html>
